@@ -37,7 +37,8 @@ export async function searchProducts(token, filters = {}) {
           query,
           context: '',
           limit: 10,
-          saved_catalog: '01kryj06mvgg0c59ax8h3h108t'
+          saved_catalog: '01kryj06mvgg0c59ax8h3h108t',
+          ...filters
         }
       }
     })
