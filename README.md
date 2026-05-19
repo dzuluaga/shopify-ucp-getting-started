@@ -85,6 +85,41 @@ The reproduction steps and every divergence in detail are below. The
 walkthrough is captured chronologically in our commit history at
 https://github.com/dzuluaga/shopify-ucp-getting-started/commits/main.
 
+## Looking forward — beyond the terminal REPL
+
+The Get Started series does a great job of teaching UCP's mechanics
+end-to-end via a Node.js terminal script — and that's the foundation
+this repo's demo is built on. As a developer evaluating the platform,
+though, what we'd love to see published alongside the existing tutorial
+is **a real agent UI demoing the same flow with product imagery,
+variant pickers, cart state, and checkout transitions rendered
+visually**.
+
+A useful analogy: the web's adoption didn't take off when HTTP and HTML
+were finalized — it took off when Mosaic and Netscape rendered those
+documents with images and rich layout. The terminal was always
+technically capable of speaking HTTP; what changed the adoption curve
+was the *visual* demonstration of what the protocol made possible.
+Agentic commerce sits at a similar inflection: the protocol is clean
+and shipping, but the discovery surface today is mostly Node samples
+that print product titles to a console.
+
+**The kind of experience that would massively accelerate developer
+imagination** — an agent that visibly browses catalogs, filters by
+attributes, displays product cards with imagery, walks the buyer
+through option selection, and hands off to checkout with cart state
+always in view:
+
+[![Vision: visual agent commerce experience](https://img.youtube.com/vi/84sqk0sP2Rk/hqdefault.jpg)](https://www.youtube.com/watch?v=84sqk0sP2Rk)
+
+Even a small Shopify-hosted reference frontend that consumes the same
+MCP tools this repo demonstrates — or a partnership with one of the
+frontier LLM clients to ship a visible UCP rendering surface — would,
+in our view, do more for adoption than any number of additional
+terminal-based tutorials. We're rooting for that next chapter, and
+happy to keep contributing divergence reports and working demo code
+in the meantime.
+
 ## What this is
 
 UCP requires an agent to publish a JSON **profile** declaring which capabilities
