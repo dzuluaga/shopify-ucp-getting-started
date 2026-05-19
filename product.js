@@ -1,7 +1,13 @@
 import { prompt } from './utils.js';
 import { CATALOG_URL } from './search.js';
 
-async function getProductDetails(token, productId, selected = []) {
+function gidToUpid(gid) {
+  return String(gid).split('/').pop();
+}
+
+async function getProductDetails(token, gid, productOptions = []) {
+  const args = { upid: gidToUpid(gid), context: '' };
+  if (productOptions.length) args.product_options = productOptions;
   const res = await fetch(CATALOG_URL, {
     method: 'POST',
     headers: {
@@ -12,40 +18,28 @@ async function getProductDetails(token, productId, selected = []) {
       jsonrpc: '2.0',
       method: 'tools/call',
       id: 2,
-      params: {
-        name: 'get_product',
-        arguments: {
-          meta: {
-            'ucp-agent': {
-              profile: 'https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json'
-            }
-          },
-          catalog: {
-            id: productId,
-            ...(selected.length ? { selected } : {})
-          }
-        }
-      }
+      params: { name: 'get_global_product_details', arguments: args }
     })
   });
   const data = await res.json();
-  return data.result?.structuredContent ?? null;
+  const inner = JSON.parse(data.result?.content?.[0]?.text ?? '{}');
+  return inner.product ? { product: inner.product } : null;
 }
 
 function displayProduct(product) {
   const featuredVariant = product.variants?.[0];
   const price = featuredVariant ? `$${(featuredVariant.price.amount / 100).toFixed(2)}` : '';
-  const sellerName = featuredVariant?.seller?.name ?? '';
-  const variantTitle = featuredVariant?.title ?? '';
+  const shopName = featuredVariant?.shop?.name ?? '';
+  const name = featuredVariant?.displayName ?? 'Product';
   console.log('\n── 3. Product Details ─────────────────────────────\n');
-  console.log(`  ${product.title}${variantTitle ? ` - ${variantTitle}` : ''}`);
-  console.log(`  ${[price, sellerName].filter(Boolean).join('  ·  ')}\n`);
-  if (product.description?.html) console.log(`  ${product.description.html}\n`);
+  console.log(`  ${name}`);
+  console.log(`  ${[price, shopName].filter(Boolean).join('  ·  ')}\n`);
+  if (product.description) console.log(`  ${product.description}\n`);
 }
 
-async function pickVariant(token, productId, product) {
+async function pickVariant(token, gid, product) {
   const selected = Object.fromEntries(
-    (product.selected ?? []).map(s => [s.name, s.label])
+    (product.selectedOptions ?? []).map(s => [s.name, s.value])
   );
 
   if (product.options?.length) while (true) {
@@ -54,15 +48,15 @@ async function pickVariant(token, productId, product) {
     product.options.forEach(opt => {
       const lines = opt.values.map(v => {
         const n = optionMap.length + 1;
-        const marker = selected[opt.name] === v.label ? '●' : '○';
-        optionMap.push({ optName: opt.name, label: v.label });
-        return `    [${n}] ${marker} ${v.label}${v.available === false ? ' (unavailable)' : ''}`;
+        const marker = selected[opt.name] === v.value ? '●' : '○';
+        optionMap.push({ optName: opt.name, value: v.value });
+        return `    [${n}] ${marker} ${v.value}${v.availableForSale === false ? ' (unavailable)' : ''}`;
       });
       console.log(`\n  ${opt.name}:`);
       lines.forEach(l => console.log(l));
     });
 
-    const selectedDesc = product.options.map(o => selected[o.name]).join(' / ');
+    const selectedDesc = product.options.map(o => selected[o.name] ?? '—').join(' / ');
     console.log(`\n  \x1b[1mSelected: ${selectedDesc}\x1b[0m`);
     console.log('\n  [s] Select this variant  [number] Pick an option  [b] Back to results');
     const action = await prompt('\n  > ');
@@ -70,18 +64,18 @@ async function pickVariant(token, productId, product) {
 
     if (trimmed === 'b') return null;
     if (trimmed === 's') {
-      const selectedArr = Object.entries(selected).map(([name, label]) => ({ name, label }));
-      const details = await getProductDetails(token, productId, selectedArr);
+      const productOptions = Object.entries(selected).map(([key, value]) => ({ key, values: [value] }));
+      const details = await getProductDetails(token, gid, productOptions);
       const variant = details?.product?.variants?.[0];
-      return variant ? { variantId: variant.id, checkout_url: variant.checkout_url } : null;
+      return variant ? { variantId: variant.id, checkoutUrl: variant.checkoutUrl } : null;
     }
 
     const chosen = optionMap[parseInt(trimmed) - 1];
-    if (chosen) selected[chosen.optName] = chosen.label;
+    if (chosen) selected[chosen.optName] = chosen.value;
   }
 
   const variant = product.variants?.[0];
-  return variant ? { variantId: variant.id, checkout_url: variant.checkout_url } : null;
+  return variant ? { variantId: variant.id, checkoutUrl: variant.checkoutUrl } : null;
 }
 
 export async function selectProduct(token, products) {
