@@ -120,6 +120,34 @@ terminal-based tutorials. We're rooting for that next chapter, and
 happy to keep contributing divergence reports and working demo code
 in the meantime.
 
+## Related UCP work in the broader ecosystem
+
+A few resources worth bookmarking if you're following UCP adoption
+beyond Shopify:
+
+- **[ucpchecker.com](https://ucpchecker.com/)** — UCP-spec conformance
+  checker and public leaderboard, built by [Zologic](https://zologic.com/).
+  The #1 ranked store is currently a WooCommerce shop running UCPReady
+  at **100/100** across every spec dimension; Shopify stores follow at
+  **96**. Useful for validating your own implementation against the
+  protocol — and a public benchmark of how widely the spec is being
+  adopted.
+- **First fully autonomous AI purchase via UCP (March 25, 2026)** — the
+  same #1 store completed the first end-to-end agent-driven purchase on
+  the protocol: real order, real wallet debit, no card network in the
+  loop, no human after the initial instruction. Write-up:
+  [ucpchecker.com/blog/first-autonomous-ai-agent-purchase-ucp](https://ucpchecker.com/blog/first-autonomous-ai-agent-purchase-ucp).
+- **Session replay of that transaction** —
+  [ucpplayground.com/s/01KQFVJJK6HZF2Z58MVMZQ3WXP](https://ucpplayground.com/s/01KQFVJJK6HZF2Z58MVMZQ3WXP).
+  Worth watching: it's the closest thing today to the "visual agent"
+  experience the [Looking forward](#looking-forward--beyond-the-terminal-repl)
+  section above argues for — a full agent ↔ merchant transaction trace
+  rendered as something a developer can actually evaluate.
+- **["Millions of Merchants Speak UCP"](https://www.linkedin.com/pulse/millions-merchants-speak-ucp-ilya-grigorik-60dbc/)**
+  by Ilya Grigorik (Agentic Commerce Foundation, Linux Foundation) — the
+  most useful single-page overview of where UCP stands today and where
+  it's headed.
+
 ## What this is
 
 UCP requires an agent to publish a JSON **profile** declaring which capabilities
