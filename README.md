@@ -13,6 +13,10 @@ working end-to-end against `the-shirt.com`'s per-merchant MCP. Step 7
 (order monitoring) blocked on `read_global_api_orders` scope — the Dev
 Dashboard's Catalogs-API-key UI has no documented path to grant it.
 
+**📺 Video walkthrough:** [Building an AI Shopping Agent on Shopify — UCP End-to-End Walkthrough](https://youtu.be/fKhMA2QvReo)
+
+[![UCP end-to-end walkthrough video](https://img.youtube.com/vi/fKhMA2QvReo/hqdefault.jpg)](https://youtu.be/fKhMA2QvReo)
+
 ## TL;DR for the team that built this
 
 Every Node sample in the Get Started series **fails on a literal first run**.
