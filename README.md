@@ -120,6 +120,43 @@ terminal-based tutorials. We're rooting for that next chapter, and
 happy to keep contributing divergence reports and working demo code
 in the meantime.
 
+## Payment: handoff vs agent-handled
+
+UCP supports two patterns for the payment leg of the buyer journey, and
+the choice shapes where buyer identity lives:
+
+**Hand off to the merchant (today's default).** The agent's last call is
+`update_checkout` to attach the buyer's email; it then returns the
+`continue_url` to the user, who completes payment in the merchant's existing
+storefront — Shop Pay, Apple Pay, raw card, guest checkout, whatever they
+prefer. This is the federation-friendly default: no central buyer identity,
+merchants keep their CRM intact, and PII flows only to the specific merchant
+the buyer is purchasing from. It mirrors how a human shops the web today, so
+it composes cleanly with the existing buyer mental model.
+
+**Agent completes payment via `complete_checkout`.** The protocol explicitly
+supports autonomous transactions: once a checkout reaches status
+`ready_for_complete`, the agent can submit a payment instrument and place
+the order with no human in the loop at transaction time. The spec primitive
+for binding this to user consent is the **AP2 Mandates Extension** —
+cryptographic signatures where the buyer pre-authorizes the agent to spend
+up to a limit under specified terms. This is the pattern that enables
+fully autonomous flows like [the first agent-driven UCP purchase on
+March 25, 2026](https://ucpchecker.com/blog/first-autonomous-ai-agent-purchase-ucp).
+
+For the second pattern, **an agent-side wallet is the missing piece**: a
+secure store for the buyer's payment credentials and identity claims that
+the agent vendor (rather than Google Pay or Shop Pay) owns and presents via
+a custom UCP payment handler. The handler schema already permits arbitrary
+handler IDs — the protocol is ready — but no major agent vendor has shipped
+a public agent-wallet handler yet. We at [Zologic](https://zologic.com) are
+working with the Google Security team on
+[Multipaz](https://github.com/openwallet-foundation/multipaz) (an OpenWallet
+Foundation project for privacy-preserving, hardware-backed digital
+credentials) to build exactly this layer: an agent wallet that holds buyer
+payment methods and identity attestations and presents them to any UCP
+merchant via the standard payment-handler interface.
+
 ## Related UCP work in the broader ecosystem
 
 A few resources worth bookmarking if you're following UCP adoption
