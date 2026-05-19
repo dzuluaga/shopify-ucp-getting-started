@@ -1,12 +1,87 @@
-# ucp-cli — Minimal UCP Agent Profile on Vercel
+# ucp-cli — End-to-end walkthrough of Shopify's Agents Get Started tutorial
 
-A small reference repo that walks through hosting an agent profile for Shopify's
-Universal Commerce Protocol (UCP), following the
-[Shopify Agents getting-started docs](https://shopify.dev/docs/agents).
+A working reproduction of the [Shopify Agents Get Started](https://shopify.dev/docs/agents)
+tutorial (auth → profile → catalog search → product details → cart → checkout
+→ order monitoring) — plus a documented list of every place the published
+Node samples failed against the live MCP server during a literal copy-paste
+attempt, with proposed fixes for the docs team.
 
-**Live profile:** https://ucp-profiles.vercel.app/profiles/ucp-demo-agent.json
+**Live agent profile:** https://ucp-profiles.vercel.app/profiles/ucp-demo-agent.json
 
-## What this is (and isn't)
+**Status:** Steps 1–6 (auth, profile, search, product details, cart, checkout)
+working end-to-end against `the-shirt.com`'s per-merchant MCP. Step 7
+(order monitoring) blocked on `read_global_api_orders` scope — the Dev
+Dashboard's Catalogs-API-key UI has no documented path to grant it.
+
+## TL;DR for the team that built this
+
+Every Node sample in the Get Started series **fails on a literal first run**.
+Every divergence below is documented inline in this README with reproduction
+steps and the exact server error that led to its discovery.
+
+**Headline findings** (full detail later in this doc):
+
+1. **The catalog URL the tutorial tells you to copy is the wrong one.** The
+   Dev Dashboard's `Copy URL` button on the Catalogs landing page returns the
+   **REST** URL, while every subsequent code sample assumes the **MCP**
+   endpoint. The MCP URL is only surfaced by a hidden `REST / MCP` toggle in
+   the catalog editor's Request panel. → [Root cause section](#root-cause-of-the-url-divergence)
+2. **Steps 3 and 4 silently switch API surfaces** — global MCP
+   (`discover.shopifyapps.com/global/mcp`) for cross-merchant catalog search
+   vs. per-merchant MCP (discovered via `/.well-known/ucp`) for
+   cart/checkout/order. Tool names, argument shapes, profile requirements,
+   and response wrappers all differ. The tutorial doesn't disambiguate.
+3. **`search_catalog` doesn't exist on the global endpoint** the tutorial
+   sends the request to. Server returns `-32602 / Tool not found`. The actual
+   tool is `search_global_products` (visible only in the dashboard's MCP
+   sample); `search_catalog` is a *per-merchant* tool. → [Divergences table](#divergences-from-the-official-tutorial)
+4. **The tutorial's argument shape is rejected by the live schema.**
+   Published: `arguments: { meta, catalog: { query, filters } }`. Schema:
+   flat `{ query, context, limit, saved_catalog, include_secondhand,
+   min_price, max_price, ships_to }`. Filter field names also differ
+   (e.g. `condition: ['secondhand']` → `include_secondhand: true`).
+5. **The response wrapper documented in the tutorial doesn't exist.**
+   Tutorial reads `result.structuredContent.products[]`; the server returns
+   the payload as a JSON-encoded **string** at `result.content[0].text`
+   that requires a second `JSON.parse` and is keyed `offers` (not `products`).
+6. **The buyer-IP transport contradicts the UCP overview spec.** Spec
+   defines it as a body signal at `arguments.signals['dev.ucp.buyer_ip']`;
+   Shopify's per-merchant MCP silently ignores the body and rejects with
+   "Missing required buyer IP header" until you send `Shopify-Buyer-IP`
+   as an HTTP header. → [Per-merchant divergences](#per-merchant-mcp-divergences-cart--checkout-steps)
+7. **`create_checkout` requires `checkout.line_items` even when `cart_id`
+   is provided**, despite the docs saying `cart_id` alone is sufficient and
+   "inherits line items, context, and buyer from the cart."
+8. **The auth tutorial produces a credential class that can't reach Step 7.**
+   Order MCP requires `read_global_api_orders` scope; the Dev Dashboard's
+   Catalogs-API-key UI exposes no scope-management controls at all.
+
+**What we'd love from the docs / agents team:**
+
+- Change `Copy URL` on the Catalogs landing page to copy the **MCP** URL
+  (since that's what every code sample below it expects), or add an explicit
+  "now switch to the MCP tab and copy that URL instead" instruction step.
+- Disambiguate global-MCP vs. per-merchant-MCP explicitly on the
+  search-catalog and build-a-cart pages — preferably with a one-paragraph
+  intro that names both surfaces and links to the relevant schemas.
+- Update the Node sample on the search-catalog page to match the live tool
+  name (`search_global_products`), arg shape, response wrapper, and field
+  names (camelCase, no nested `filters` object).
+- Add the `Shopify-Buyer-IP` header to every cart/checkout/order Node sample
+  and document where to source the buyer's IP from. The header is currently
+  missing from every published example.
+- Clarify in the checkout tutorial that `cart_id` and `checkout.line_items`
+  are both required — not alternative paths. The current "primary argument:
+  cart_id" language implies sufficiency, which the live schema contradicts.
+- Document the path from "follow the auth tutorial" to "have a credential
+  with `read_global_api_orders` scope" — currently there is none reachable
+  from the Catalogs-API-key UI.
+
+The reproduction steps and every divergence in detail are below. The
+walkthrough is captured chronologically in our commit history at
+https://github.com/dzuluaga/shopify-ucp-getting-started/commits/main.
+
+## What this is
 
 UCP requires an agent to publish a JSON **profile** declaring which capabilities
 it speaks (cart, checkout, etc.). The profile URL is passed on every request
@@ -17,11 +92,15 @@ This repo:
 
 - Hosts the smallest valid profile (cart + checkout capabilities) as a static
   JSON file on Vercel.
-- Includes `ucp_demo.js`, which authenticates against Shopify's token endpoint
-  and then calls the `search_global_products` MCP tool against a saved catalog
-  to render product results.
-- Does **not** implement cart or checkout tool calls yet — that's the next step
-  beyond search.
+- Includes `ucp_demo.js`, a Node 22+ script that walks the buyer journey from
+  auth through cart, checkout, and a referral URL: authenticates against
+  Shopify's token endpoint, calls `search_global_products` against a saved
+  catalog, lets the user pick a product/variant via `get_global_product_details`,
+  then discovers the merchant's MCP endpoint via `/.well-known/ucp` and
+  exercises `create_cart`, `create_checkout`, `update_checkout`, and
+  `cancel_checkout`.
+- Does **not** yet implement Step 7 (order monitoring) — blocked on scope
+  provisioning as noted above.
 
 ## Repo layout
 
@@ -203,7 +282,7 @@ silently switches between them between Step 3 (catalog search) and Step 4
 | **Endpoint** | `https://discover.shopifyapps.com/global/mcp` (one URL for everyone) | `https://<shop>.myshopify.com/api/ucp/mcp` (discovered via `/.well-known/ucp` on the storefront origin) |
 | **Tools exposed** | 2: `search_global_products`, `get_global_product_details` | 12+: `search_catalog`, `lookup_catalog`, `get_product`, `create_cart`, `get_cart`, `update_cart`, `cancel_cart`, `create_checkout`, `get_checkout`, `update_checkout`, `complete_checkout`, `cancel_checkout`, `get_order` |
 | **Profile required in request** | No — auth bearer is enough | **Yes** — `arguments.meta['ucp-agent'].profile` on every `tools/call` |
-| **Buyer IP required** | No | Yes — exact location TBD (errors with `"Missing required buyer IP header"` if absent) |
+| **Buyer IP required** | No | **Yes — `Shopify-Buyer-IP` HTTP header** (even though the UCP spec defines buyer IP as a body signal at `arguments.signals['dev.ucp.buyer_ip']`, Shopify's implementation rejects the body location and requires the header) |
 | **Catalog scoping** | Via `arguments.saved_catalog` slug | Implicitly scoped to the merchant |
 | **What it's for** | Cross-merchant discovery (Step 3) | Acting on a chosen merchant (Steps 4–6: cart, checkout, order) |
 | **Auth scope** | `read_global_api_catalog_search` (Catalogs-API key) | Same bearer works for cart/checkout; `read_global_api_orders` needed for orders (no documented path to obtain this scope from the Catalogs-API key UI) |
@@ -218,20 +297,23 @@ you have to translate it to the **global** request shape
 saved_catalog}`, no profile required) — which is exactly what the dashboard's
 `MCP` toggle shows in the Request panel.
 
-### Empirically verified for the per-merchant surface (so far)
+### Empirically verified for the per-merchant surface
 
 Probing `https://the-shirt-rochelle-behrens.myshopify.com/api/ucp/mcp`
 (discovered via `https://the-shirt.com/.well-known/ucp`) with our Vercel-hosted
-profile:
+profile, in chronological order of discovery:
 
 | Probe | Result |
 |---|---|
-| `tools/call search_catalog` with no profile | `-32001 / "Missing profile uri"` |
-| Same call with profile at `params.arguments.meta['ucp-agent'].profile` | Got past discovery → `-32000 / "Missing required buyer IP header"` |
-| Tried 5 buyer-IP header guesses (`Buyer-IP`, `X-Buyer-IP`, `Ucp-Buyer-Ip`, `Mcp-Buyer-Ip`, `X-Forwarded-For`) | All still error — buyer-IP location is in the body, exact field TBD |
-
-The remaining unknown (buyer-IP placement) is the next thing to nail down
-before cart/checkout/order can be implemented.
+| `tools/call` with no profile | `-32001 / "Missing profile uri"` |
+| Same with profile at `params.arguments.meta['ucp-agent'].profile` | Got past discovery → `-32000 / "Missing required buyer IP header"` |
+| 5 buyer-IP header guesses (`Buyer-IP`, `X-Buyer-IP`, `Ucp-Buyer-Ip`, `Mcp-Buyer-Ip`, `X-Forwarded-For`) and body location `arguments.signals['dev.ucp.buyer_ip']` (the UCP spec's canonical location) | All still error — server insists on a different header name |
+| **`Shopify-Buyer-IP: <ipv4>` header** | ✅ Passes auth — error layer moves to tool-name / schema validation |
+| `create_cart` with valid variant + Shopify-Buyer-IP header + profile | ✅ Returns a real cart with `id`, `line_items`, `totals`, `continue_url` |
+| `create_checkout` with `cart_id` only (per docs) | `-32602 / "Missing required arguments: checkout"` |
+| `create_checkout` with `cart_id` + empty `checkout: {}` | `Invalid arguments: '#/checkout' did not contain a required property of 'line_items'` |
+| `create_checkout` with `cart_id` + `checkout: { line_items: [...] }` | ✅ Returns a real checkout with `status: incomplete` and `continue_url` |
+| `tools/list` on the merchant endpoint (with profile + buyer IP) | Returns `result.tools: []` — tool availability is not advertised here; you have to know the tool names from the OpenRPC schema referenced in `/.well-known/ucp` |
 
 ## Divergences from the official tutorial
 
@@ -285,6 +367,22 @@ first run.
   `search_global_products` and `get_global_product_details`.
 - **The catalog ID and the MCP URL are now separate concepts.** Two configs to
   manage instead of one URL.
+
+### Per-merchant MCP divergences (cart + checkout steps)
+
+| Concern | Tutorial / UCP spec | Live Shopify per-merchant MCP |
+|---|---|---|
+| **Buyer IP transport** | UCP overview spec defines it as a body signal: `arguments.signals['dev.ucp.buyer_ip']` ("signals based on direct observation by the platform") | **`Shopify-Buyer-IP` HTTP header**, ipv4 value. The body location is silently ignored — error reads "Missing required buyer IP header" verbatim. |
+| **`create_checkout` arguments** | Checkout tutorial: "Primary argument: `cart_id` — inherits line items, context, and buyer from the cart" | `cart_id` alone → `-32602 / "Missing required arguments: checkout"`. The schema requires `arguments.checkout.line_items` to be re-stated even when `cart_id` is provided. |
+| **Cart / checkout response wrapper** | Docs reference `result.structuredContent.cart` (or `.checkout`) | `result.structuredContent` is **absent**; the cart/checkout payload lives at `result.content[0].text` as a JSON-encoded **string** that parses to the resource object directly (no `cart` / `checkout` key wrapper around it). |
+| **`tools/list` on merchant endpoint** | MCP standard: returns array of available tools with input schemas | Returns `result.tools: []` even with profile + buyer IP. Tool names and schemas are only available via the OpenRPC document referenced in `/.well-known/ucp`. |
+
+**Recommendation for the docs team:** the "Build a cart" tutorial's Node sample
+should include the `Shopify-Buyer-IP` header in the example fetch (and document
+where to source the IP from). The "Checkout" tutorial should clarify that
+`checkout.line_items` is required alongside `cart_id`, not an alternative — the
+current "primary argument: cart_id" language reads as "cart_id is sufficient,"
+which the live schema contradicts.
 
 ## Report issues / contribute new divergences
 
